@@ -1,0 +1,24 @@
+{
+  "name": "@wrongieisright/byteme-herald-core",
+  "version": "0.1.0",
+  "description": "Shared framework for the ByteMe (Whiteout Survival) and Herald (Kingshot) Discord bots: shared SQLite schema and queries, proactive-message tracking, and the DST-aware scheduler.",
+  "main": "index.js",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wrongieisright/byteme-herald-core.git"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "for f in test/*.test.js; do echo \"=== $f ===\"; node --test \"$f\" || exit 1; done"
+  },
+  "dependencies": {
+    "luxon": "^3.4.4",
+    "node-cron": "^3.0.3"
+  },
+  "devDependencies": {
+    "better-sqlite3": "^12.11.1"
+  }
+}
