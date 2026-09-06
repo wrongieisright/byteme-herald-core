@@ -98,6 +98,24 @@ player_id` rename touches shared tables but is ByteMe-history-specific, so it li
 ByteMe and runs alongside `initSharedSchema`; order doesn't matter since `CREATE TABLE IF
 NOT EXISTS` no-ops on an existing table.
 
+## Gift-code detection (`features/giftcodeDetection.js`)
+
+`createGiftCodeDetector({ labeledRegex, bareLineRegexes })` (Phase 3) is the shared
+*algorithm*: every labeled match, then every whole line that is nothing but a code,
+first-appearance order, de-duplicated. The regex *shapes* are deliberately not shared —
+the two games' real codes differ enough that one regex would regress one bot: WOS codes
+are regularly pure letters as short as 4–7 chars (`gogoWOS`, `EidMubarak`), while
+Kingshot's digit-free codes were all 10+ chars and short bare words (`thanks`, `awesome`)
+must not match. Each bot builds its own with `labeledCodeRegex({ labels, allowBackticks,
+trailingBoundary, minLength, maxLength })` and `bareLineRegex({ minLength, maxLength,
+requireLetter, requireDigit, lettersOnly })`, and `test/giftcodeDetection.test.js` pins the
+builders' output to the exact literals both bots shipped with — change a builder and that
+test tells you which bot's behavior you just changed. The same test file replays both
+bots' own detection cases (including Herald's list of real past Kingshot codes) against
+their configs. Two things stay in the bots: the ByteMe-documented gap that its labeled
+pattern has no backtick tolerance (a real, verified-live behavior, kept as-is), and
+Herald's `VALID_UNTIL_REGEX` (its announcement format, not detection).
+
 ## Testing
 
 `npm test` — `node:test`, one process per file, no `--test-force-exit` (the scheduler

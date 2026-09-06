@@ -19,6 +19,7 @@ lands in both bots by bumping a version instead of being hand-ported.
 | `createBotMessages({ db, ... })` | Tracks every proactive message the bot sends (so a dashboard can list/delete them), self-heals `channel_errors`, and backfills history from Discord. |
 | `createScheduler({ db, botMessages })` | Daily/weekly/interval/one-time schedules and reminders, DST-aware via `node-cron`'s timezone option, with "Test Send". The pure datetime/cron helpers are also exported standalone. |
 | `createRedemptionEngine({ redeemOnce, classifyResponse, looksLikeRateLimit, delays, ... })` | The gift-code redemption engine: per-player attempt loop with transient vs. rate-limit backoff, a fully serialized queue with a gap between batches, progress callbacks, lazy player resolution, and per-player code sweeps. The bot injects its HTTP call, result-code vocabulary, and tuning. `makeSign`/`nowSeconds`/`sleep` are exported too. |
+| `createGiftCodeDetector({ labeledRegex, bareLineRegexes })` + `labeledCodeRegex`/`bareLineRegex` | Finds gift codes in channel text: every `code:`/`cdk:`-labeled match (with a URL guard) plus every whole line that is nothing but a code, de-duplicated in order. The bot builds its own game-shaped regexes with the helpers and injects them. |
 | `test/helpers/testDb.js`, `test/helpers/mockAxios.js` | The test scaffolding both bots use. |
 
 The bot keeps owning what differs per game: its `players` table (progression columns),

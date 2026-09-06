@@ -3,6 +3,7 @@ const { createSharedQueries } = require('./db/queries');
 const { createBotMessages, previewFromContent } = require('./features/botMessages');
 const scheduler = require('./features/scheduler');
 const { createRedemptionEngine, sleep, nowSeconds, makeSign } = require('./features/redemption');
+const { createGiftCodeDetector, labeledCodeRegex, bareLineRegex } = require('./features/giftcodeDetection');
 
 module.exports = {
   // db
@@ -17,5 +18,8 @@ module.exports = {
   createRedemptionEngine,
   sleep,
   nowSeconds,
-  makeSign
+  makeSign,
+  createGiftCodeDetector,
+  labeledCodeRegex,
+  bareLineRegex
 };
