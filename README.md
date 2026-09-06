@@ -18,11 +18,12 @@ lands in both bots by bumping a version instead of being hand-ported.
 | `createSharedQueries(db)` | Query objects over those tables — `playerGuilds`, `bannedPlayers`, `bannedUsers`, `schedules`, `reminders`, `channels`, `userPrefs`, `blockedCodes`, `botMessages`, `playerChanges`, `channelErrors`. |
 | `createBotMessages({ db, ... })` | Tracks every proactive message the bot sends (so a dashboard can list/delete them), self-heals `channel_errors`, and backfills history from Discord. |
 | `createScheduler({ db, botMessages })` | Daily/weekly/interval/one-time schedules and reminders, DST-aware via `node-cron`'s timezone option, with "Test Send". The pure datetime/cron helpers are also exported standalone. |
+| `createRedemptionEngine({ redeemOnce, classifyResponse, looksLikeRateLimit, delays, ... })` | The gift-code redemption engine: per-player attempt loop with transient vs. rate-limit backoff, a fully serialized queue with a gap between batches, progress callbacks, lazy player resolution, and per-player code sweeps. The bot injects its HTTP call, result-code vocabulary, and tuning. `makeSign`/`nowSeconds`/`sleep` are exported too. |
 | `test/helpers/testDb.js`, `test/helpers/mockAxios.js` | The test scaffolding both bots use. |
 
 The bot keeps owning what differs per game: its `players` table (progression columns),
-its `redemptions` table, its game's redemption HTTP calls, gift-code detection rules, and
-every slash command.
+its `redemptions` table, its game's redemption HTTP call and result-code vocabulary (fed
+into the engine), gift-code detection rules, and every slash command.
 
 ## Using it from a bot
 

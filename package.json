@@ -1,6 +1,6 @@
 {
   "name": "@wrongieisright/byteme-herald-core",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Shared framework for the ByteMe (Whiteout Survival) and Herald (Kingshot) Discord bots: shared SQLite schema and queries, proactive-message tracking, and the DST-aware scheduler.",
   "main": "index.js",
   "license": "UNLICENSED",

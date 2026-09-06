@@ -2,6 +2,7 @@ const { initSharedSchema, SHARED_TABLES } = require('./db/schema');
 const { createSharedQueries } = require('./db/queries');
 const { createBotMessages, previewFromContent } = require('./features/botMessages');
 const scheduler = require('./features/scheduler');
+const { createRedemptionEngine, sleep, nowSeconds, makeSign } = require('./features/redemption');
 
 module.exports = {
   // db
@@ -12,5 +13,9 @@ module.exports = {
   createBotMessages,
   previewFromContent,
   createScheduler: scheduler.createScheduler,
-  scheduler
+  scheduler,
+  createRedemptionEngine,
+  sleep,
+  nowSeconds,
+  makeSign
 };

@@ -45,8 +45,42 @@ game logic at all — Herald gets them, and the scheduler, for free when it adop
 Bot-owned, deliberately: `players` (progression columns differ per game) and `redemptions`
 (the two copies had already diverged: `display_name` vs `nickname`, ByteMe counts
 `same_type_exchange` as already-redeemed, Herald has `getActiveCodes`). The redemption
-engine is a later extraction phase with its own gate — don't fold `redemptions` in here as
-a side effect of something else.
+*engine* is shared (see below) but the `redemptions` *table* isn't — don't fold it in here
+as a side effect of something else.
+
+## Redemption engine (`features/redemption.js`)
+
+`createRedemptionEngine(config)` is the most incident-tuned code in either bot, extracted
+in Phase 2. It owns *how* a roster gets redeemed: the per-player attempt loop with its two
+backoff flavors (plain transient retry vs. rate-limit backoff, and no pointless sleep after
+the last attempt), the fully serialized queue with its `BATCH_GAP_MS` pause, batch
+iteration with progress callbacks, lazy player resolution (`redeemForAllLazy` — the fix for
+a real double-redeem race), and the per-player code sweep (`redeemCodesForPlayer`, which
+stops at the first `invalid_player_info`). Everything game-specific is injected:
+
+- `redeemOnce({ player_id, code, kid, attempt, maxAttempts })` — the one HTTP call, owned
+  by the bot: endpoint, headers, signing, and its own per-attempt logging. Throws on
+  network failure (an axios error's `.response.status === 429` is understood).
+- `classifyResponse(data)` — the game's result-code vocabulary; returns
+  `{ success, result }` or `null`. Order matters and is preserved from the originals:
+  explicit codes first, then the engine's `looksLikeRateLimit`, then a fallback of the
+  API's own message text.
+- `looksLikeRateLimit(errCode, msg)` — what counts as "slow down" (WOS: 40101 + 40004 +
+  wording; Kingshot: 40101 + wording incl. "rate limit").
+- `delays` — **all four required, no defaults**, so a bot's tuning can never change
+  silently by a package bump: `DELAY_MS`, `RETRY_DELAY_MS`, `RATE_LIMIT_BACKOFF_MS`,
+  `BATCH_GAP_MS`. `sleep()` collapses them under `FAST_TEST_MODE`.
+- `retryRateLimitedAtEnd` — ByteMe's end-of-batch second pass for players who exhausted
+  their attempts on rate limiting (real incident: 2 of 63 stuck, fixed by a manual re-run
+  ~40 min later). Off by default.
+- `stopOnExpired` — Herald's "stop the batch at the first `expired`" (its API returns that
+  for a nonexistent code, true for everyone). Off by default; ByteMe must not turn it on
+  because WOS reuses code strings for later promotions.
+
+The two bots' `scraper.js` files therefore differ only in those injected pieces plus their
+own `scrapePlayer`/`scrapeAllPlayers` (per-game progression fields — still bot-owned).
+`makeSign(params, secretKey)` and `nowSeconds()` are shared too (identical signing scheme
+on both Century Games APIs; `time` is Unix *seconds*, a real bug when it was milliseconds).
 
 Contract on the bot's `players` table: it must have `player_id TEXT UNIQUE NOT NULL`.
 `playerGuilds.unlink`/`removeEverywhere` delete from it, and guild-scoped queries join
