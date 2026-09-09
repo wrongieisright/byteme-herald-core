@@ -20,11 +20,13 @@ lands in both bots by bumping a version instead of being hand-ported.
 | `createScheduler({ db, botMessages })` | Daily/weekly/interval/one-time schedules and reminders, DST-aware via `node-cron`'s timezone option, with "Test Send". The pure datetime/cron helpers are also exported standalone. |
 | `createRedemptionEngine({ redeemOnce, classifyResponse, looksLikeRateLimit, delays, ... })` | The gift-code redemption engine: per-player attempt loop with transient vs. rate-limit backoff, a fully serialized queue with a gap between batches, progress callbacks, lazy player resolution, and per-player code sweeps. The bot injects its HTTP call, result-code vocabulary, and tuning. `makeSign`/`nowSeconds`/`sleep` are exported too. |
 | `createGiftCodeDetector({ labeledRegex, bareLineRegexes })` + `labeledCodeRegex`/`bareLineRegex` | Finds gift codes in channel text: every `code:`/`cdk:`-labeled match (with a URL guard) plus every whole line that is nothing but a code, de-duplicated in order. The bot builds its own game-shaped regexes with the helpers and injects them. |
+| `createTelegramWatcher({ channelUsername, extractGiftCodes, handleCode, timings?, createClient? })` | Watches a public Telegram channel for gift codes over a user-account MTProto session (teleproto), with the four stall defenses both bots converged on: a `getMe()` liveness probe, an unconditional 6-hourly reconnect, an hourly heartbeat log, and a `getMessages()` polling fallback. The bot injects the channel, its detector, and what to do with each code. |
 | `test/helpers/testDb.js`, `test/helpers/mockAxios.js` | The test scaffolding both bots use. |
 
 The bot keeps owning what differs per game: its `players` table (progression columns),
 its `redemptions` table, its game's redemption HTTP call and result-code vocabulary (fed
-into the engine), gift-code detection rules, and every slash command.
+into the engine), gift-code detection rules, which Telegram channel it watches and what it
+does with a detected code, and every slash command.
 
 ## Using it from a bot
 

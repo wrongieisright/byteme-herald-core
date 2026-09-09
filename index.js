@@ -4,6 +4,7 @@ const { createBotMessages, previewFromContent } = require('./features/botMessage
 const scheduler = require('./features/scheduler');
 const { createRedemptionEngine, sleep, nowSeconds, makeSign } = require('./features/redemption');
 const { createGiftCodeDetector, labeledCodeRegex, bareLineRegex } = require('./features/giftcodeDetection');
+const { createTelegramWatcher } = require('./features/telegramWatcher');
 
 module.exports = {
   // db
@@ -21,5 +22,6 @@ module.exports = {
   makeSign,
   createGiftCodeDetector,
   labeledCodeRegex,
-  bareLineRegex
+  bareLineRegex,
+  createTelegramWatcher
 };

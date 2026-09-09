@@ -112,9 +112,36 @@ requireLetter, requireDigit, lettersOnly })`, and `test/giftcodeDetection.test.j
 builders' output to the exact literals both bots shipped with — change a builder and that
 test tells you which bot's behavior you just changed. The same test file replays both
 bots' own detection cases (including Herald's list of real past Kingshot codes) against
-their configs. Two things stay in the bots: the ByteMe-documented gap that its labeled
-pattern has no backtick tolerance (a real, verified-live behavior, kept as-is), and
-Herald's `VALID_UNTIL_REGEX` (its announcement format, not detection).
+their configs. Both bots' labeled patterns are backtick-tolerant as of 2026-09-09 (ByteMe
+adopted Herald's shape after a real code arrived wrapped in backticks; the test pins its
+original literal alongside the new one). One thing stays in Herald: its
+`VALID_UNTIL_REGEX` (its announcement format, not detection).
+
+## Telegram watcher (`features/telegramWatcher.js`)
+
+`createTelegramWatcher({ channelUsername, extractGiftCodes, handleCode, timings, createClient })`
+(Phase 4) returns `{ start }`; `start(discordClient)` resolves to `null` when
+`TELEGRAM_API_ID`/`TELEGRAM_API_HASH`/`TELEGRAM_SESSION` aren't all set (or connect/channel
+resolution fails), otherwise to a handle `{ client, pollForMissedMessages, getState, stop }`.
+The two bots' watchers were line-for-line identical apart from the channel (`wosrewards` /
+`ksrewards`) and the redeem options they pass, so those are the injection points:
+`handleCode(discordClient, code, { via })` is called per detected code with `via` `'push'`
+or `'poll'`, and the bot decides what a fresh Telegram post means for its deferred results
+(ByteMe `retryExpired: true`, Herald `retryDeferred: true`). Every one of the four stall
+defenses in the file header (liveness probe, unconditional reconnect, heartbeat, poll
+fallback) exists because of a real incident where a posted code was never detected with
+zero trace in the logs — they're defense in depth, not redundancy, and none should be
+removed because another one "covers" it. `DEFAULT_TIMINGS` are what both bots shipped;
+`timings` exists for tests, not for the bots to tune independently.
+
+teleproto is a real dependency of this package (the bots no longer require it directly)
+but is `require`d lazily inside `start()`, only once credentials are present, so a bot
+without Telegram configured never loads it. `createClient` swaps the `TelegramClient`
+constructor for a fake; `test/telegramWatcher.test.js` drives one through push events,
+the poll fallback, a rejecting and a hanging `getMe()`, the Nth-heartbeat reconnect, and
+`stop()`, with `node:test`'s mock timers. The one thing not covered here or anywhere is
+teleproto's own `catchUp()` resync against a live server — this sandbox can't reach
+Telegram, so that's confirmed only by the bots' 6-hour heartbeat cycles in production.
 
 ## Testing
 
@@ -129,6 +156,9 @@ bots learned the hard way that the flag silently truncates runs).
   for the same code (its suite still runs them too, against its shims — that's the
   integration check). Keep the two in step: a behavior change here should show up as a
   test change here first.
+- `test/telegramWatcher.test.js` enables `mock.timers` for the interval tests and resets it
+  in `finally`; a test that starts a watcher must `await handle.stop()` or the three
+  intervals keep the process alive.
 - `test/helpers/testDb.js` / `mockAxios.js` are what the bots re-export from their own
   `test/helpers/`; the bots keep their game-specific default axios handlers locally.
 
