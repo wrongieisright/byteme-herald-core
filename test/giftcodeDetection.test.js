@@ -2,19 +2,26 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { createGiftCodeDetector, labeledCodeRegex, bareLineRegex } = require('../features/giftcodeDetection');
 
-// The exact regex literals each bot shipped with before extraction. The
-// builders must reproduce them byte-for-byte -- that's what makes this a
-// refactor and not a behavior change.
-const BYTEME_LABELED = /\b(?:code|cdk)s?\s*:\s*(?!https?:\/\/)([A-Za-z0-9]{4,25})\b/gi;
+// The exact regex literals each bot has shipped. The builders must reproduce
+// them byte-for-byte -- that's what makes an extraction a refactor and not a
+// behavior change, and what makes a deliberate change (like ByteMe adopting
+// backtick tolerance on 2026-09-09) show up here as a new pinned literal
+// rather than a silent drift.
+const BYTEME_LABELED_ORIGINAL = /\b(?:code|cdk)s?\s*:\s*(?!https?:\/\/)([A-Za-z0-9]{4,25})\b/gi;
+const BYTEME_LABELED = /\b(?:code|cdk)s?\s*:\s*(?!https?:\/\/)`?([A-Za-z0-9]{4,25})`?/gi;
 const BYTEME_BARE = /^(?=[A-Za-z0-9]*[A-Za-z])[A-Za-z0-9]{4,25}$/;
 const HERALD_LABELED = /\b(?:gift\s*code|code|cdk)s?\s*:\s*(?!https?:\/\/)`?([A-Za-z0-9]{4,25})`?/gi;
 const HERALD_BARE_MIXED = /^(?=[A-Za-z0-9]*[A-Za-z])(?=[A-Za-z0-9]*[0-9])[A-Za-z0-9]{4,25}$/;
 const HERALD_BARE_LETTERS = /^[A-Za-z]{10,25}$/;
 
+// ByteMe's shape as of 2026-09-09 (backtick-tolerant, no trailing boundary).
 const byteme = createGiftCodeDetector({
-  labeledRegex: labeledCodeRegex({ labels: ['code', 'cdk'], allowBackticks: false, trailingBoundary: true }),
+  labeledRegex: labeledCodeRegex({ labels: ['code', 'cdk'], allowBackticks: true, trailingBoundary: false }),
   bareLineRegexes: [bareLineRegex({ minLength: 4, maxLength: 25, requireLetter: true })]
 });
+
+// ByteMe's original shape (Phase 3 extraction through 2026-09-09).
+const bytemeOriginalLabeled = labeledCodeRegex({ labels: ['code', 'cdk'], allowBackticks: false, trailingBoundary: true });
 
 const herald = createGiftCodeDetector({
   labeledRegex: labeledCodeRegex({ labels: ['gift\\s*code', 'code', 'cdk'], allowBackticks: true, trailingBoundary: false }),
@@ -26,9 +33,11 @@ const herald = createGiftCodeDetector({
 
 // ─── builders reproduce the shipped literals exactly ────────────────────────
 
-test('labeledCodeRegex reproduces ByteMe\'s and Herald\'s shipped regexes exactly (source and flags)', () => {
+test('labeledCodeRegex reproduces ByteMe\'s (current and original) and Herald\'s shipped regexes exactly (source and flags)', () => {
   assert.equal(byteme.labeledRegex.source, BYTEME_LABELED.source);
   assert.equal(byteme.labeledRegex.flags, BYTEME_LABELED.flags);
+  assert.equal(bytemeOriginalLabeled.source, BYTEME_LABELED_ORIGINAL.source);
+  assert.equal(bytemeOriginalLabeled.flags, BYTEME_LABELED_ORIGINAL.flags);
   assert.equal(herald.labeledRegex.source, HERALD_LABELED.source);
   assert.equal(herald.labeledRegex.flags, HERALD_LABELED.flags);
 });
@@ -50,8 +59,10 @@ test('ByteMe: labeled code, no backticks', () => {
   assert.deepEqual(byteme.extractGiftCodes('Gift Code: OFFICIALSTORE0709'), ['OFFICIALSTORE0709']);
 });
 
-test('ByteMe: a backtick-wrapped labeled code is NOT detected (documented, verified-live behavior)', () => {
-  assert.deepEqual(byteme.extractGiftCodes('Gift Code: `OFFICIALSTORE0709`'), []);
+test('ByteMe: a backtick-wrapped labeled code IS detected since 2026-09-09 (and was not under the original shape)', () => {
+  assert.deepEqual(byteme.extractGiftCodes('Gift Code: `OFFICIALSTORE0709`'), ['OFFICIALSTORE0709']);
+  const original = createGiftCodeDetector({ labeledRegex: bytemeOriginalLabeled, bareLineRegexes: byteme.bareLineRegexes });
+  assert.deepEqual(original.extractGiftCodes('Gift Code: `OFFICIALSTORE0709`'), []);
 });
 
 test('ByteMe: case-insensitive label, cdk variant', () => {
