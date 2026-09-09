@@ -5,6 +5,7 @@ const scheduler = require('./features/scheduler');
 const { createRedemptionEngine, sleep, nowSeconds, makeSign } = require('./features/redemption');
 const { createGiftCodeDetector, labeledCodeRegex, bareLineRegex } = require('./features/giftcodeDetection');
 const { createTelegramWatcher } = require('./features/telegramWatcher');
+const { createDashboard, registerSharedRoutes } = require('./web/dashboard');
 
 module.exports = {
   // db
@@ -23,5 +24,8 @@ module.exports = {
   createGiftCodeDetector,
   labeledCodeRegex,
   bareLineRegex,
-  createTelegramWatcher
+  createTelegramWatcher,
+  // web
+  createDashboard,
+  registerSharedRoutes
 };

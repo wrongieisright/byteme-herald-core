@@ -143,6 +143,52 @@ the poll fallback, a rejecting and a hanging `getMe()`, the Nth-heartbeat reconn
 teleproto's own `catchUp()` resync against a live server — this sandbox can't reach
 Telegram, so that's confirmed only by the bots' 6-hour heartbeat cycles in production.
 
+## Dashboard skeleton (`web/dashboard.js`)
+
+`createDashboard({ ... })` (Phase 5) returns `{ start }`; `start(client)` builds the Express
+app, session store, passport strategy and every route, listens, and returns the
+`http.Server` (ByteMe's original returned nothing; its smoke test captured the server by
+wrapping `http.createServer`, which still works). The two bots' `web/server.js` were
+identical from the first `express()` call through `/health` and across 22 `/api` routes;
+the whole diff was three injection points, and those are the options:
+
+- `channelConfigKeys` — the `config_key` values `POST /api/channels-config` accepts
+  (ByteMe `schedules/reminders/giftcode/monitor/wosupdates`, Herald
+  `giftcode/monitor/kingshotupdates`), plus `registrationChannelKeys` for which of those
+  trigger the registration welcome post.
+- `redeemSources` — the `source` label a dashboard-triggered redemption logs, `global` vs
+  `perGuild` (ByteMe `'dashboard'` for both, Herald `'dashboard_global'` /
+  `'dashboard_per_server'`). Not unified: each bot's `redemptions.source` column already
+  carries its own vocabulary and its dashboard filters on it.
+- `registerRoutes(app, { requireAuth, client })` — the bot's own routes (players, ByteMe's
+  timezone/schedules/reminders/registry-backfill, Herald's kingdom edit), registered on
+  the same app with the same `requireAuth`. None of their paths overlap a shared route, so
+  the hook runs after the shared routes and order never affects matching.
+
+Two routes now pass `req.body.guildId || null` through where ByteMe's originals passed
+nothing: `/api/announce-registration` and `/api/messages/backfill`. Herald's already did,
+ByteMe's `broadcastRegistrationReminder(client)` ignores the extra argument and its
+`backfillMessages` is this package's (a null guild means every guild), and ByteMe's
+frontend sends no body on either — so it's the same call on both bots. Herald also gains
+`GET /api/channel-errors` (it has the table since Phase 1 but no banner yet — that's a
+frontend feature port, not part of this). ByteMe's `express.static('public')` was dropped:
+the directory never existed.
+
+The frontend is deliberately **not** shared. The two `index.html` files differ in theme
+(WOS blue/Rajdhani vs Kingshot gold/Cinzel), tab set (ByteMe has Schedules/Reminders,
+Herald doesn't), localStorage keys, even the `api()` helper's signature, and Herald has
+neither the scoped-controls badges nor the channel-errors banner. Sharing any of that
+means rewriting one bot's page to the other's conventions — a feature decision to make
+explicitly, with a browser check, not a side effect of sharing the server.
+
+`test/dashboard.test.js` mounts `registerSharedRoutes` on a bare app with a stub
+`requireAuth` (the real Discord handshake isn't worth faking — same conclusion both bots'
+smoke tests reached) and drives every shared route against `coreDb` plus a recording
+`redemptions` stub, then boots `createDashboard` proper for the three smoke checks. The
+session store starts an un-unref'd 15-minute cleanup interval on construction; the boot
+test unrefs intervals created during `start()` so the file exits without
+`--test-force-exit`.
+
 ## Testing
 
 `npm test` — `node:test`, one process per file, no `--test-force-exit` (the scheduler
@@ -156,6 +202,8 @@ bots learned the hard way that the flag silently truncates runs).
   for the same code (its suite still runs them too, against its shims — that's the
   integration check). Keep the two in step: a behavior change here should show up as a
   test change here first.
+- `test/dashboard.test.js` boots a real listener on port 0 per test and closes it in
+  `finally`; see the dashboard section for the session-store interval.
 - `test/telegramWatcher.test.js` enables `mock.timers` for the interval tests and resets it
   in `finally`; a test that starts a watcher must `await handle.stop()` or the three
   intervals keep the process alive.

@@ -21,12 +21,14 @@ lands in both bots by bumping a version instead of being hand-ported.
 | `createRedemptionEngine({ redeemOnce, classifyResponse, looksLikeRateLimit, delays, ... })` | The gift-code redemption engine: per-player attempt loop with transient vs. rate-limit backoff, a fully serialized queue with a gap between batches, progress callbacks, lazy player resolution, and per-player code sweeps. The bot injects its HTTP call, result-code vocabulary, and tuning. `makeSign`/`nowSeconds`/`sleep` are exported too. |
 | `createGiftCodeDetector({ labeledRegex, bareLineRegexes })` + `labeledCodeRegex`/`bareLineRegex` | Finds gift codes in channel text: every `code:`/`cdk:`-labeled match (with a URL guard) plus every whole line that is nothing but a code, de-duplicated in order. The bot builds its own game-shaped regexes with the helpers and injects them. |
 | `createTelegramWatcher({ channelUsername, extractGiftCodes, handleCode, timings?, createClient? })` | Watches a public Telegram channel for gift codes over a user-account MTProto session (teleproto), with the four stall defenses both bots converged on: a `getMe()` liveness probe, an unconditional 6-hourly reconnect, an hourly heartbeat log, and a `getMessages()` polling fallback. The bot injects the channel, its detector, and what to do with each code. |
+| `createDashboard({ db, viewsDir, channelConfigKeys, registrationChannelKeys, giftcode, redeemSources?, backfillMessages, registerRoutes? })` | The dashboard skeleton: Express, the SQLite session store, Discord OAuth locked to `OWNER_DISCORD_ID`, the auth routes, `/health`, and the 22 `/api` routes both bots serve identically (guilds, channels and channel config, player changes, redemptions list/detail/redeem/progress/delete, bot messages list/delete/backfill, channel errors). The bot injects its channel keys, its giftcode functions, its redeem `source` labels, and a `registerRoutes(app, { requireAuth, client })` hook for its own game-shaped routes; the page itself (`index.html`, `login.html`) stays in the bot's `viewsDir`. `registerSharedRoutes` is exported for tests. |
 | `test/helpers/testDb.js`, `test/helpers/mockAxios.js` | The test scaffolding both bots use. |
 
 The bot keeps owning what differs per game: its `players` table (progression columns),
 its `redemptions` table, its game's redemption HTTP call and result-code vocabulary (fed
 into the engine), gift-code detection rules, which Telegram channel it watches and what it
-does with a detected code, and every slash command.
+does with a detected code, its dashboard pages and game-specific dashboard routes, and every
+slash command.
 
 ## Using it from a bot
 
