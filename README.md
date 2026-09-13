@@ -22,13 +22,14 @@ lands in both bots by bumping a version instead of being hand-ported.
 | `createGiftCodeDetector({ labeledRegex, bareLineRegexes })` + `labeledCodeRegex`/`bareLineRegex` | Finds gift codes in channel text: every `code:`/`cdk:`-labeled match (with a URL guard) plus every whole line that is nothing but a code, de-duplicated in order. The bot builds its own game-shaped regexes with the helpers and injects them. |
 | `createTelegramWatcher({ channelUsername, extractGiftCodes, handleCode, timings?, createClient? })` | Watches a public Telegram channel for gift codes over a user-account MTProto session (teleproto), with the four stall defenses both bots converged on: a `getMe()` liveness probe, an unconditional 6-hourly reconnect, an hourly heartbeat log, and a `getMessages()` polling fallback. The bot injects the channel, its detector, and what to do with each code. |
 | `createDashboard({ db, viewsDir, channelConfigKeys, registrationChannelKeys, giftcode, redeemSources?, backfillMessages, registerRoutes? })` | The dashboard skeleton: Express, the SQLite session store, Discord OAuth locked to `OWNER_DISCORD_ID`, the auth routes, `/health`, and the 22 `/api` routes both bots serve identically (guilds, channels and channel config, player changes, redemptions list/detail/redeem/progress/delete, bot messages list/delete/backfill, channel errors). The bot injects its channel keys, its giftcode functions, its redeem `source` labels, and a `registerRoutes(app, { requireAuth, client })` hook for its own game-shaped routes; the page itself (`index.html`, `login.html`) stays in the bot's `viewsDir`. `registerSharedRoutes` is exported for tests. |
+| `createRegistrySync({ game, urlEnvVar, secretEnvVar, buildPayload, http, logTag?, batchSize? })` / `createRegistryBackfill({ game, http, supabaseUrl, supabaseKey, getGaps, fieldMap, applyUpdate, chunkSize? })` | The player-registry sync with the shared registry app (wos-registry, multi-game since its migration 013): the outbound `POST /api/bot-sync` of `{ game, players }` on every new add and monitor-detected change (optional — a bot without the env vars skips it, logged), and the read-only reverse pull that fills a bot's NULL nickname/level from what a human entered in the registry, never overwriting a known value. The bot injects which game it is, its env var names, how a player maps to the registry's columns, and its axios. |
 | `test/helpers/testDb.js`, `test/helpers/mockAxios.js` | The test scaffolding both bots use. |
 
 The bot keeps owning what differs per game: its `players` table (progression columns),
 its `redemptions` table, its game's redemption HTTP call and result-code vocabulary (fed
 into the engine), gift-code detection rules, which Telegram channel it watches and what it
-does with a detected code, its dashboard pages and game-specific dashboard routes, and every
-slash command.
+does with a detected code, its dashboard pages and game-specific dashboard routes, which registry env vars it reads
+and how its players map onto the registry's columns, and every slash command.
 
 ## Using it from a bot
 

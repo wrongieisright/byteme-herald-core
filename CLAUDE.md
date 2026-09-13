@@ -189,6 +189,45 @@ session store starts an un-unref'd 15-minute cleanup interval on construction; t
 test unrefs intervals created during `start()` so the file exits without
 `--test-force-exit`.
 
+## Registry sync and backfill (`features/registrySync.js`)
+
+Track B of the overhaul (v0.6.0). The shared registry app (wrongieisright/wos-registry —
+one Supabase project holding both games' players, every row tagged with a `game` column
+since its migration 013, `'wos'` or `'kingshot'`) has two directions of traffic with a
+bot, and both live here:
+
+- `createRegistrySync({ game, urlEnvVar, secretEnvVar, buildPayload, http, logTag?,
+  batchSize? })` → `{ syncPlayer(player_id, scraped), syncPlayers(players), buildPayload,
+  getSyncUrl }`. Posts `{ game, players }` to `<url>/api/bot-sync` with an `x-bot-secret`
+  header. `game` is batch-level and the registry keys its lookups on `(game, player_id)`;
+  a `null` game sends the pre-multi-game `{ players }` shape, which the endpoint still
+  accepts as WOS. Unconfigured (either env var unset) → logs one skip line and does
+  nothing; a failed post is logged, never thrown — the sync must never break an add or a
+  monitor run. `syncPlayers` chunks at `batchSize` (500, the endpoint's cap) and maps each
+  entry through `buildPayload(p.player_id, p)`.
+- `createRegistryBackfill({ game, http, supabaseUrl, supabaseKey, getGaps, fieldMap,
+  applyUpdate, chunkSize? })` → `{ backfill(), fetchRegistryDataForIds(ids) }`. Reads the
+  registry's `players` table over Supabase REST with the app's public anon key (public
+  SELECT under RLS, by that repo's design), filtered to this bot's `game` so equal numeric
+  IDs across games can't cross-contaminate. `fieldMap` is `{ localField: registryField }`
+  (ByteMe `{ nickname: 'primary_name', fc_level: 'furnace_level' }`, Herald
+  `{ nickname: 'primary_name', level: 'furnace_level' }`). **Only fills a local field that
+  is currently NULL** — never overwrites, because neither side is a known source of truth
+  now that both games' player-lookup APIs are dead. Returns `{ gaps, backfilled,
+  stillMissing, updates }`.
+
+Why `http` is injected instead of `require('axios')` here: each bot's test suite patches
+`axios` through `Module.prototype.require` (`test/helpers/mockAxios.js`), and the bots'
+existing registry tests assert on the captured `/bot-sync` body — injecting the bot's own
+axios keeps those tests meaningful against the shim. The bot also keeps `buildPayload`,
+because the registry's column names are the registry's (`furnace_level` holds Kingshot's
+level too) and the mapping from each game's scrape shape is the bot's business.
+
+ByteMe's history that shaped this (see its `CLAUDE.md`, "wos-registry sync"): the sync
+used to be gated on a successful scrape, which became "never sync" the day WOS's `/player`
+died, silently, for weeks. Neither factory gates on scrape success; the bot passes whatever
+it knows and `buildPayload` falls back to the player ID as `primary_name`.
+
 ## Testing
 
 `npm test` — `node:test`, one process per file, no `--test-force-exit` (the scheduler
@@ -207,6 +246,8 @@ bots learned the hard way that the flag silently truncates runs).
 - `test/telegramWatcher.test.js` enables `mock.timers` for the interval tests and resets it
   in `finally`; a test that starts a watcher must `await handle.stop()` or the three
   intervals keep the process alive.
+- `test/registrySync.test.js` runs both registry factories against a recording fake `http`
+  and sets/clears its own env vars per test.
 - `test/helpers/testDb.js` / `mockAxios.js` are what the bots re-export from their own
   `test/helpers/`; the bots keep their game-specific default axios handlers locally.
 

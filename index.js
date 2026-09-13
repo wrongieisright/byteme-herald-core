@@ -6,6 +6,7 @@ const { createRedemptionEngine, sleep, nowSeconds, makeSign } = require('./featu
 const { createGiftCodeDetector, labeledCodeRegex, bareLineRegex } = require('./features/giftcodeDetection');
 const { createTelegramWatcher } = require('./features/telegramWatcher');
 const { createDashboard, registerSharedRoutes } = require('./web/dashboard');
+const { createRegistrySync, createRegistryBackfill } = require('./features/registrySync');
 
 module.exports = {
   // db
@@ -25,6 +26,8 @@ module.exports = {
   labeledCodeRegex,
   bareLineRegex,
   createTelegramWatcher,
+  createRegistrySync,
+  createRegistryBackfill,
   // web
   createDashboard,
   registerSharedRoutes
