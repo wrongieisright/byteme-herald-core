@@ -149,6 +149,45 @@ function shouldFireInterval(schedule, now = DateTime.now()) {
   return daysSince % schedule.interval_days === 0;
 }
 
+// The next moment a schedule will actually send, as a UTC ISO string, or
+// null when nothing is coming (a one-time schedule whose fire_at has passed,
+// or a recurring one with no qualifying tick in the next 400 days). Mirrors
+// the live path exactly rather than re-deriving it: node-cron ticks cron_expr
+// in the schedule's timezone when dst_follow is set and in UTC when pinned
+// (see scheduleJob), and every tick is then gated by shouldFireInterval -- so
+// the "next send" a dashboard shows can't disagree with what fireScheduledJob
+// will do. Added for the dashboards' Schedules tab, which until then showed
+// an every-N-days schedule only as "from <anchor_date>", leaving the user to
+// count days by hand to know when the next one was due.
+function nextFireTime(schedule, now = DateTime.now()) {
+  if (schedule.one_time) {
+    if (!schedule.fire_at) return null;
+    const at = DateTime.fromISO(schedule.fire_at, { zone: 'UTC' });
+    return at.isValid && at > now ? at.toUTC().toISO() : null;
+  }
+
+  const parts = String(schedule.cron_expr || '').split(' ');
+  if (parts.length !== 5) return null;
+  const minute = Number(parts[0]);
+  const hour = Number(parts[1]);
+  if (!Number.isInteger(minute) || !Number.isInteger(hour)) return null;
+  const dayOfWeek = parts[4] === '*' ? null : Number(parts[4]);
+
+  const zone = schedule.dst_follow ? schedule.timezone : 'UTC';
+  let day = now.setZone(zone).startOf('day');
+  if (!day.isValid) return null;
+  for (let i = 0; i < 400; i++) {
+    const candidate = day.set({ hour, minute, second: 0, millisecond: 0 });
+    // luxon's weekday is 1 (Monday) .. 7 (Sunday); cron's is 0 (Sunday) .. 6.
+    const dowOk = dayOfWeek === null || candidate.weekday % 7 === dayOfWeek;
+    if (candidate > now && dowOk && shouldFireInterval(schedule, candidate)) {
+      return candidate.toUTC().toISO();
+    }
+    day = day.plus({ days: 1 });
+  }
+  return null;
+}
+
 /**
  * Format a UTC ISO string for display in both user TZ and UTC.
  * e.g. "6:00 PM EDT (22:00 UTC)"
@@ -199,6 +238,7 @@ const pureHelpers = {
   buildCronExpr,
   buildIntervalSchedule,
   shouldFireInterval,
+  nextFireTime,
   formatTimeDisplay,
   formatFireAtForEdit,
   getEditableTime

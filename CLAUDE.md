@@ -87,6 +87,20 @@ Contract on the bot's `players` table: it must have `player_id TEXT UNIQUE NOT N
 through `player_guilds` on that column. (ByteMe's column was `wos_player_id` until Sept 2026
 and was renamed specifically so both bots could share this schema.)
 
+## Scheduler (`features/scheduler.js`)
+
+The incident history lives in the bots' CLAUDE.md files (the DST re-check bug, the silent
+one-time deactivation). One thing to keep in step here: **`nextFireTime(schedule, now)`
+must mirror the live firing path**, not re-derive it. node-cron ticks `cron_expr` in
+`schedule.timezone` when `dst_follow` is set and in UTC when pinned (`scheduleJob`), and
+every tick is then gated by `shouldFireInterval`; `nextFireTime` walks candidate ticks with
+exactly those two rules and returns the first one ahead of `now` as a UTC ISO string (or
+`null`: a one-time schedule already past, or nothing within 400 days). Both dashboards
+show it as the Schedules tab's NEXT SEND column (v0.7.0), which is the reason it exists —
+an every-N-days row used to show only "from <anchor_date>". If the firing rules ever
+change (a new gate, a different zone rule), change `nextFireTime` in the same commit or
+the dashboards will show a time the bot doesn't send at.
+
 ## Migrations
 
 Same hand-rolled convention as both bots: `CREATE TABLE IF NOT EXISTS` for everything,

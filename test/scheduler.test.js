@@ -85,6 +85,60 @@ test('buildIntervalSchedule: returns fireAtUtc, a LOCAL-date anchor_date, and a 
   assert.equal(scheduler.buildIntervalSchedule('garbage', 'UTC'), null);
 });
 
+// ─── nextFireTime ───────────────────────────────────────────────────────────
+
+test('nextFireTime: every-N-days schedule -- today\'s tick if still ahead, else the next qualifying day', () => {
+  // Every 2 days from 2026-09-30 at 20:50 New York (the shape the dashboard's
+  // "from 2026-09-30" row hides the next send of).
+  const s = { cron_expr: '50 20 * * *', timezone: 'America/New_York', dst_follow: 1, anchor_date: '2026-09-30', interval_days: 2 };
+  const before = DateTime.fromISO('2026-09-30T20:00:00', { zone: 'America/New_York' });
+  assert.equal(scheduler.nextFireTime(s, before), '2026-10-01T00:50:00.000Z');
+  const after = DateTime.fromISO('2026-09-30T21:00:00', { zone: 'America/New_York' });
+  assert.equal(scheduler.nextFireTime(s, after), '2026-10-03T00:50:00.000Z');
+  // An off day skips straight to the next on-day.
+  const offDay = DateTime.fromISO('2026-10-01T09:00:00', { zone: 'America/New_York' });
+  assert.equal(scheduler.nextFireTime(s, offDay), '2026-10-03T00:50:00.000Z');
+});
+
+test('nextFireTime: the next send crosses a DST change at the schedule\'s local wall-clock time', () => {
+  // New York leaves DST on 2026-11-01. Every 2 days from 10-30: 10-30 (EDT), 11-01 (EST).
+  const s = { cron_expr: '50 20 * * *', timezone: 'America/New_York', dst_follow: 1, anchor_date: '2026-10-30', interval_days: 2 };
+  const now = DateTime.fromISO('2026-10-30T21:00:00', { zone: 'America/New_York' });
+  assert.equal(scheduler.nextFireTime(s, now), '2026-11-02T01:50:00.000Z');
+});
+
+test('nextFireTime: daily and weekly schedules, with and without a first-send date', () => {
+  const now = DateTime.fromISO('2026-10-01T12:00:00Z'); // a Thursday
+  const daily = { cron_expr: '0 9 * * *', timezone: 'UTC', dst_follow: 1 };
+  assert.equal(scheduler.nextFireTime(daily, now), '2026-10-02T09:00:00.000Z');
+  const later = { cron_expr: '0 15 * * *', timezone: 'UTC', dst_follow: 1 };
+  assert.equal(scheduler.nextFireTime(later, now), '2026-10-01T15:00:00.000Z');
+  const wednesday = { cron_expr: '30 9 * * 3', timezone: 'UTC', dst_follow: 1 };
+  assert.equal(scheduler.nextFireTime(wednesday, now), '2026-10-07T09:30:00.000Z');
+  const sunday = { cron_expr: '30 9 * * 0', timezone: 'UTC', dst_follow: 1 };
+  assert.equal(scheduler.nextFireTime(sunday, now), '2026-10-04T09:30:00.000Z');
+  const held = { cron_expr: '0 9 * * *', timezone: 'UTC', dst_follow: 1, anchor_date: '2026-10-20' };
+  assert.equal(scheduler.nextFireTime(held, now), '2026-10-20T09:00:00.000Z');
+});
+
+test('nextFireTime: a schedule pinned to UTC ticks its cron time in UTC, as scheduleJob runs it', () => {
+  const pinned = { cron_expr: '0 9 * * *', timezone: 'America/New_York', dst_follow: 0 };
+  const now = DateTime.fromISO('2026-10-01T08:00:00Z');
+  assert.equal(scheduler.nextFireTime(pinned, now), '2026-10-01T09:00:00.000Z');
+  const following = { ...pinned, dst_follow: 1 };
+  assert.equal(scheduler.nextFireTime(following, now), '2026-10-01T13:00:00.000Z');
+});
+
+test('nextFireTime: one-time schedules return their fire_at while it is ahead, null once passed; junk returns null', () => {
+  const now = DateTime.fromISO('2026-10-01T12:00:00Z');
+  assert.equal(scheduler.nextFireTime({ one_time: 1, fire_at: '2026-10-02T12:00:00.000Z' }, now), '2026-10-02T12:00:00.000Z');
+  assert.equal(scheduler.nextFireTime({ one_time: 1, fire_at: '2026-09-30T12:00:00.000Z' }, now), null);
+  assert.equal(scheduler.nextFireTime({ one_time: 1, fire_at: null }, now), null);
+  assert.equal(scheduler.nextFireTime({ cron_expr: 'garbage', timezone: 'UTC', dst_follow: 1 }, now), null);
+  assert.equal(scheduler.nextFireTime({ cron_expr: '0 9 * * *', timezone: 'Not/A_Zone', dst_follow: 1 }, now), null);
+  assert.equal(schedulerModule.nextFireTime({ cron_expr: '0 9 * * *', timezone: 'UTC', dst_follow: 1 }, now), '2026-10-02T09:00:00.000Z');
+});
+
 // ─── shouldFireInterval ─────────────────────────────────────────────────────
 
 test('shouldFireInterval: no anchor always fires; future anchor holds; past anchor fires daily; interval_days gates every N days', () => {
