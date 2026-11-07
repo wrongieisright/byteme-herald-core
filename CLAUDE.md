@@ -111,7 +111,10 @@ given, the UTC weekday for a weekly, `timezone: 'UTC'` and `dst_follow: false`, 
 bot stores as-is. Pinned at the offset in force that day, deliberately. A schedule stored
 this way is also what `nextFireTime` and `shiftSchedule` expect of a pinned one; the
 legacy shape (dst_follow 0 with a non-UTC timezone) still fires exactly as before, the
-cron path is untouched. `shiftSchedule(schedule, hours, now)` backs the dashboards' "shift
+cron path is untouched. `pinExistingScheduleToUtc(schedule, timezone, now)` is the edit-path
+variant: it pins the schedule's *next send* (via `nextFireTime`) so flipping an existing
+schedule to pin changes nothing about when it fires; a legacy pinned row only gets its
+timezone normalised to UTC. `shiftSchedule(schedule, hours, now)` backs the dashboards' "shift
 all ±1h" action: it moves a recurring schedule's time of day in the zone it ticks in,
 carrying the anchor date and a weekly's weekday across midnight, so every new tick is the
 old one plus `hours` (pinned by a test against `nextFireTime`).

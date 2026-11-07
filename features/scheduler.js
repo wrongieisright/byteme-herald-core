@@ -238,6 +238,29 @@ function pinScheduleToUtc(timeStr, timezone, recurrenceType = 'daily', dayOfWeek
   };
 }
 
+// Pins a schedule that already exists, keeping its next send exactly where
+// it is: the next tick (nextFireTime) rendered in `timezone` is what gets
+// pinned, so a Follow-DST schedule that currently fires at 01:50 UTC pins at
+// 01:50 UTC -- "pin" freezes what the schedule does now; if "now" is wrong,
+// move it first (shiftSchedule, or an edit with a new time). A legacy pinned
+// schedule (dst_follow 0 with a non-UTC timezone) already runs its digits in
+// UTC, so it only gets timezone 'UTC' written down. Returns null for a
+// one-time schedule or when no next tick exists.
+function pinExistingScheduleToUtc(schedule, timezone = schedule.timezone, now = DateTime.now()) {
+  if (schedule.one_time) return null;
+  if (!schedule.dst_follow) {
+    return { cron_expr: schedule.cron_expr, anchor_date: schedule.anchor_date || null, fireAtUtc: nextFireTime(schedule, now), timezone: 'UTC', dst_follow: false };
+  }
+  const nextIso = nextFireTime(schedule, now);
+  if (!nextIso) return null;
+  const local = DateTime.fromISO(nextIso, { zone: 'UTC' }).setZone(timezone);
+  if (!local.isValid) return null;
+  const weekly = String(schedule.cron_expr).split(' ')[4] !== '*';
+  const recurrence = schedule.recurrence_type === 'interval' ? 'interval' : weekly ? 'weekly' : 'daily';
+  const timeStr = schedule.anchor_date ? local.toFormat('yyyy-MM-dd HH:mm') : local.toFormat('HH:mm');
+  return pinScheduleToUtc(timeStr, timezone, recurrence, weekly ? local.weekday % 7 : 0, local);
+}
+
 // Moves a recurring schedule's time of day by whole hours, for the
 // dashboards' "shift all schedules ±1h" action (same 2026-11-07 request:
 // the way out for schedules that followed DST but were meant to track a
@@ -327,6 +350,7 @@ const pureHelpers = {
   shouldFireInterval,
   nextFireTime,
   pinScheduleToUtc,
+  pinExistingScheduleToUtc,
   shiftSchedule,
   formatTimeDisplay,
   formatFireAtForEdit,

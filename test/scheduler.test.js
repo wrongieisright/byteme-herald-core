@@ -168,6 +168,26 @@ test('pinScheduleToUtc: a first-send date, a weekly across midnight, a UTC input
   assert.equal(scheduler.pinScheduleToUtc('09:00', 'UTC', 'weekly', 9), null);
 });
 
+test('pinExistingScheduleToUtc: freezes the schedule\'s next send, so pinning changes nothing about when it fires', () => {
+  const now = DateTime.fromISO('2026-11-07T12:00:00Z');
+  const bear = { cron_expr: '50 20 * * *', timezone: 'America/New_York', dst_follow: 1, recurrence_type: 'interval', anchor_date: '2026-09-30', interval_days: 2 };
+  const pinned = scheduler.pinExistingScheduleToUtc(bear, 'America/New_York', now);
+  assert.deepEqual(pinned, { cron_expr: '50 1 * * *', anchor_date: '2026-11-08', fireAtUtc: '2026-11-08T01:50:00.000Z', timezone: 'UTC', dst_follow: false });
+  assert.equal(scheduler.nextFireTime({ ...bear, ...pinned }, now), scheduler.nextFireTime(bear, now));
+
+  const weekly = { cron_expr: '50 20 * * 0', timezone: 'America/New_York', dst_follow: 1, recurrence_type: 'weekly' };
+  const pw = scheduler.pinExistingScheduleToUtc(weekly, 'America/New_York', now);
+  assert.equal(pw.cron_expr, '50 1 * * 1');
+  assert.equal(pw.anchor_date, null);
+  assert.equal(scheduler.nextFireTime({ ...weekly, ...pw }, now), scheduler.nextFireTime(weekly, now));
+
+  // Legacy pinned shape: digits already ran in UTC, only the timezone is normalised.
+  const legacy = { cron_expr: '50 0 * * *', timezone: 'America/New_York', dst_follow: 0, recurrence_type: 'daily' };
+  assert.equal(scheduler.pinExistingScheduleToUtc(legacy, 'America/New_York', now).cron_expr, '50 0 * * *');
+  assert.equal(scheduler.pinExistingScheduleToUtc(legacy, 'America/New_York', now).timezone, 'UTC');
+  assert.equal(scheduler.pinExistingScheduleToUtc({ one_time: 1, fire_at: '2026-12-01T00:00:00.000Z' }), null);
+});
+
 // ─── shiftSchedule ──────────────────────────────────────────────────────────
 
 test('shiftSchedule: moves the time of day, carrying the anchor date and weekday across midnight', () => {
