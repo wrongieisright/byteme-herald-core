@@ -188,6 +188,93 @@ function nextFireTime(schedule, now = DateTime.now()) {
   return null;
 }
 
+// "Pin to UTC" done properly. The dashboards and /schedule have always
+// offered "Pin to UTC (never shifts)" next to "Follow DST", but the pinned
+// path only ever ran the typed digits as a UTC cron (scheduleJob's zone rule),
+// so a user who typed 20:50 with New York selected got 20:50 UTC -- nothing
+// like the label, and the reason people kept schedules on Follow DST and then
+// had to re-time every one by hand twice a year (real request, 2026-11-07:
+// a 20:50 New York reminder for a 01:00 UTC bear fired an hour late the
+// week after the clocks changed). This converts the time the user typed, in
+// the timezone they picked, into the UTC instant it means -- today, or on
+// the first-send date when one is given -- and returns the UTC-shaped pieces
+// to store: cron digits in UTC, the UTC calendar date as anchor_date when a
+// date was given, the weekday in UTC for a weekly (it can differ from the
+// local weekday across midnight), with timezone 'UTC' and dst_follow false.
+// Pinned at the offset in force on that day, by design: that is what the
+// user sees when they save, and the UTC instant then never moves. A time
+// already given in UTC comes back unchanged. Returns null on bad input.
+function pinScheduleToUtc(timeStr, timezone, recurrenceType = 'daily', dayOfWeek = 0, now = DateTime.now()) {
+  const str = String(timeStr || '').trim();
+  const hasDate = /^\d{4}-\d{2}-\d{2}/.test(str);
+  let local;
+  if (hasDate) {
+    const iso = parseDateTime(str, timezone);
+    if (!iso) return null;
+    local = DateTime.fromISO(iso, { zone: 'UTC' }).setZone(timezone);
+  } else {
+    const [hour, minute] = str.split(':').map(Number);
+    if (!Number.isInteger(hour) || !Number.isInteger(minute)) return null;
+    local = now.setZone(timezone).set({ hour, minute, second: 0, millisecond: 0 });
+    if (!local.isValid) return null;
+    if (recurrenceType === 'weekly') {
+      const dow = Number(dayOfWeek);
+      if (!Number.isInteger(dow) || dow < 0 || dow > 6) return null;
+      // The next calendar day with that weekday (today counts), so the UTC
+      // weekday below is the one this schedule actually lands on.
+      local = local.plus({ days: (dow - (local.weekday % 7) + 7) % 7 });
+    }
+  }
+  if (!local.isValid) return null;
+  const utc = local.toUTC();
+  const cron_expr = buildCronExpr(utc.toFormat('HH:mm'), recurrenceType, recurrenceType === 'weekly' ? utc.weekday % 7 : 0);
+  if (!cron_expr) return null;
+  return {
+    cron_expr,
+    anchor_date: hasDate ? utc.toFormat('yyyy-MM-dd') : null,
+    fireAtUtc: utc.toISO(),
+    timezone: 'UTC',
+    dst_follow: false
+  };
+}
+
+// Moves a recurring schedule's time of day by whole hours, for the
+// dashboards' "shift all schedules ±1h" action (same 2026-11-07 request:
+// the way out for schedules that followed DST but were meant to track a
+// UTC game clock, until they are pinned). Works in the zone the cron
+// actually ticks in (scheduleJob's rule) on the schedule's anchor date, or
+// on the next day it fires when it has none, so a shift across midnight
+// moves the anchor date and a weekly's weekday with it -- every new tick is
+// the old one plus `hours`, which is the whole point. Returns the new
+// cron_expr and anchor_date (null when the schedule had none), or null for
+// a one-time schedule, a zero shift or a cron it cannot read.
+function shiftSchedule(schedule, hours, now = DateTime.now()) {
+  if (schedule.one_time) return null;
+  const h = Number(hours);
+  if (!Number.isInteger(h) || h === 0) return null;
+  const parts = String(schedule.cron_expr || '').split(' ');
+  if (parts.length !== 5) return null;
+  const minute = Number(parts[0]);
+  const hour = Number(parts[1]);
+  if (!Number.isInteger(minute) || !Number.isInteger(hour)) return null;
+  const weekly = parts[4] !== '*';
+
+  const zone = schedule.dst_follow ? schedule.timezone : 'UTC';
+  let ref = schedule.anchor_date
+    ? DateTime.fromISO(schedule.anchor_date, { zone })
+    : now.setZone(zone).startOf('day');
+  if (!ref.isValid) return null;
+  if (weekly && !schedule.anchor_date) {
+    const dow = Number(parts[4]);
+    if (!Number.isInteger(dow) || dow < 0 || dow > 6) return null;
+    ref = ref.plus({ days: (dow - (ref.weekday % 7) + 7) % 7 });
+  }
+  const shifted = ref.set({ hour, minute, second: 0, millisecond: 0 }).plus({ hours: h });
+  const cron_expr = buildCronExpr(shifted.toFormat('HH:mm'), weekly ? 'weekly' : 'daily', weekly ? shifted.weekday % 7 : 0);
+  if (!cron_expr) return null;
+  return { cron_expr, anchor_date: schedule.anchor_date ? shifted.toFormat('yyyy-MM-dd') : null };
+}
+
 /**
  * Format a UTC ISO string for display in both user TZ and UTC.
  * e.g. "6:00 PM EDT (22:00 UTC)"
@@ -239,6 +326,8 @@ const pureHelpers = {
   buildIntervalSchedule,
   shouldFireInterval,
   nextFireTime,
+  pinScheduleToUtc,
+  shiftSchedule,
   formatTimeDisplay,
   formatFireAtForEdit,
   getEditableTime

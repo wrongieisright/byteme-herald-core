@@ -101,6 +101,21 @@ an every-N-days row used to show only "from <anchor_date>". If the firing rules 
 change (a new gate, a different zone rule), change `nextFireTime` in the same commit or
 the dashboards will show a time the bot doesn't send at.
 
+**Pin to UTC (v0.8.0).** Both bots had offered "Pin to UTC (never shifts)" since the start,
+but the pinned path only ever ran the typed digits as a UTC cron, so 20:50 typed with New
+York selected fired at 20:50 UTC. `pinScheduleToUtc(timeStr, timezone, recurrenceType,
+dayOfWeek, now)` is what the bots' create/edit paths now call when the user picks pin with
+a non-UTC timezone: it converts the local time to the UTC instant it means (today, or on
+the first-send date), and returns UTC cron digits, the UTC anchor date when a date was
+given, the UTC weekday for a weekly, `timezone: 'UTC'` and `dst_follow: false`, which the
+bot stores as-is. Pinned at the offset in force that day, deliberately. A schedule stored
+this way is also what `nextFireTime` and `shiftSchedule` expect of a pinned one; the
+legacy shape (dst_follow 0 with a non-UTC timezone) still fires exactly as before, the
+cron path is untouched. `shiftSchedule(schedule, hours, now)` backs the dashboards' "shift
+all ±1h" action: it moves a recurring schedule's time of day in the zone it ticks in,
+carrying the anchor date and a weekly's weekday across midnight, so every new tick is the
+old one plus `hours` (pinned by a test against `nextFireTime`).
+
 ## Migrations
 
 Same hand-rolled convention as both bots: `CREATE TABLE IF NOT EXISTS` for everything,

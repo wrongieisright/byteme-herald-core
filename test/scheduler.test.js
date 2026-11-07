@@ -139,6 +139,65 @@ test('nextFireTime: one-time schedules return their fire_at while it is ahead, n
   assert.equal(schedulerModule.nextFireTime({ cron_expr: '0 9 * * *', timezone: 'UTC', dst_follow: 1 }, now), '2026-10-02T09:00:00.000Z');
 });
 
+// ─── pinScheduleToUtc ───────────────────────────────────────────────────────
+
+test('pinScheduleToUtc: converts the typed local time to UTC at today\'s offset and stores the schedule in UTC', () => {
+  const winter = DateTime.fromISO('2026-11-07T12:00:00', { zone: 'America/New_York' }); // EST, UTC-5
+  assert.deepEqual(scheduler.pinScheduleToUtc('19:50', 'America/New_York', 'daily', 0, winter), {
+    cron_expr: '50 0 * * *', anchor_date: null, fireAtUtc: '2026-11-08T00:50:00.000Z', timezone: 'UTC', dst_follow: false
+  });
+  const summer = DateTime.fromISO('2026-07-01T12:00:00', { zone: 'America/New_York' }); // EDT, UTC-4
+  assert.equal(scheduler.pinScheduleToUtc('20:50', 'America/New_York', 'daily', 0, summer).cron_expr, '50 0 * * *');
+  // What the old pinned path did with 20:50 New York: ran it at 20:50 UTC.
+  assert.notEqual(scheduler.pinScheduleToUtc('20:50', 'America/New_York', 'daily', 0, winter).cron_expr, '50 20 * * *');
+});
+
+test('pinScheduleToUtc: a first-send date, a weekly across midnight, a UTC input, and junk', () => {
+  const winter = DateTime.fromISO('2026-11-07T12:00:00', { zone: 'America/New_York' });
+  const interval = scheduler.pinScheduleToUtc('2026-11-08 19:50', 'America/New_York', 'interval', 0, winter);
+  assert.equal(interval.cron_expr, '50 0 * * *');
+  assert.equal(interval.anchor_date, '2026-11-09');
+  assert.equal(interval.fireAtUtc, '2026-11-09T00:50:00.000Z');
+  // Sunday 20:50 New York is Monday 01:50 UTC.
+  assert.equal(scheduler.pinScheduleToUtc('20:50', 'America/New_York', 'weekly', 0, winter).cron_expr, '50 1 * * 1');
+  // Wednesday 09:00 Berlin stays Wednesday.
+  assert.equal(scheduler.pinScheduleToUtc('09:00', 'Europe/Berlin', 'weekly', 3, winter).cron_expr, '0 8 * * 3');
+  assert.equal(scheduler.pinScheduleToUtc('00:50', 'UTC', 'daily', 0, winter).cron_expr, '50 0 * * *');
+  assert.equal(scheduler.pinScheduleToUtc('garbage', 'UTC'), null);
+  assert.equal(scheduler.pinScheduleToUtc('09:00', 'Not/A_Zone'), null);
+  assert.equal(scheduler.pinScheduleToUtc('09:00', 'UTC', 'weekly', 9), null);
+});
+
+// ─── shiftSchedule ──────────────────────────────────────────────────────────
+
+test('shiftSchedule: moves the time of day, carrying the anchor date and weekday across midnight', () => {
+  const bear = { cron_expr: '50 20 * * *', timezone: 'America/New_York', dst_follow: 1, anchor_date: '2026-09-30', interval_days: 2 };
+  assert.deepEqual(scheduler.shiftSchedule(bear, -1), { cron_expr: '50 19 * * *', anchor_date: '2026-09-30' });
+  assert.deepEqual(scheduler.shiftSchedule(bear, 1), { cron_expr: '50 21 * * *', anchor_date: '2026-09-30' });
+  const early = { cron_expr: '30 0 * * *', timezone: 'America/New_York', dst_follow: 1, anchor_date: '2026-10-03', interval_days: 2 };
+  assert.deepEqual(scheduler.shiftSchedule(early, -1), { cron_expr: '30 23 * * *', anchor_date: '2026-10-02' });
+  const daily = { cron_expr: '59 19 * * *', timezone: 'America/New_York', dst_follow: 1 };
+  assert.deepEqual(scheduler.shiftSchedule(daily, -1), { cron_expr: '59 18 * * *', anchor_date: null });
+  const sunday = { cron_expr: '30 23 * * 0', timezone: 'UTC', dst_follow: 1 };
+  assert.deepEqual(scheduler.shiftSchedule(sunday, 1), { cron_expr: '30 0 * * 1', anchor_date: null });
+  const monday = { cron_expr: '30 0 * * 1', timezone: 'UTC', dst_follow: 1 };
+  assert.deepEqual(scheduler.shiftSchedule(monday, -1), { cron_expr: '30 23 * * 0', anchor_date: null });
+});
+
+test('shiftSchedule: the shifted schedule\'s next send is exactly the old one moved by that many hours', () => {
+  const now = DateTime.fromISO('2026-11-07T12:00:00Z');
+  const s = { cron_expr: '50 20 * * *', timezone: 'America/New_York', dst_follow: 1, anchor_date: '2026-09-30', interval_days: 2 };
+  const before = DateTime.fromISO(scheduler.nextFireTime(s, now));
+  const after = DateTime.fromISO(scheduler.nextFireTime({ ...s, ...scheduler.shiftSchedule(s, -1) }, now));
+  assert.equal(after.toISO(), before.minus({ hours: 1 }).toISO());
+});
+
+test('shiftSchedule: null for one-time schedules, a zero shift and an unreadable cron', () => {
+  assert.equal(scheduler.shiftSchedule({ one_time: 1, fire_at: '2026-12-01T00:00:00.000Z' }, 1), null);
+  assert.equal(scheduler.shiftSchedule({ cron_expr: '0 9 * * *', timezone: 'UTC', dst_follow: 1 }, 0), null);
+  assert.equal(scheduler.shiftSchedule({ cron_expr: 'garbage', timezone: 'UTC', dst_follow: 1 }, 1), null);
+});
+
 // ─── shouldFireInterval ─────────────────────────────────────────────────────
 
 test('shouldFireInterval: no anchor always fires; future anchor holds; past anchor fires daily; interval_days gates every N days', () => {
